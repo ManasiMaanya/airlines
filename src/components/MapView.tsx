@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { project } from "@/lib/geo";
 import { buildScene } from "@/lib/scene";
 import { callsignOrIcao, formatAlt, formatSpeed } from "@/lib/format";
 import type { BBox } from "@/lib/types";
@@ -14,6 +15,9 @@ export default function MapView() {
   const host = useRef<HTMLDivElement>(null);
   const coord = useRef<HTMLParagraphElement>(null);
   const hint = useRef<HTMLParagraphElement>(null);
+  const fitRef = useRef<(() => void) | null>(null);
+  const switchThemeRef = useRef<((theme: "dark" | "satellite") => void) | null>(null);
+  const [mapTheme, setMapTheme] = useState<"dark" | "satellite">("dark");
 
   useEffect(() => {
     const el = host.current;
@@ -25,14 +29,48 @@ export default function MapView() {
       maxZoom: 16,
       attributionControl: true,
     });
-    const attribution = "Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ";
-    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
-      maxZoom: 16,
-      attribution,
-    }).addTo(map);
-    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", {
-      maxZoom: 16,
-    }).addTo(map);
+
+    const darkLayers: L.TileLayer[] = [
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 16,
+        attribution: "Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ",
+      }),
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 16,
+      }),
+    ];
+
+    const satelliteLayers: L.TileLayer[] = [
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 18,
+        attribution: "Imagery &copy; Esri",
+      }),
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 18,
+      }),
+    ];
+
+    darkLayers.forEach((layer) => layer.addTo(map));
+
+    switchThemeRef.current = (nextTheme: "dark" | "satellite") => {
+      if (nextTheme === "dark") {
+        satelliteLayers.forEach((layer) => {
+          if (map.hasLayer(layer)) map.removeLayer(layer);
+        });
+        darkLayers.forEach((layer) => {
+          if (!map.hasLayer(layer)) layer.addTo(map);
+        });
+      } else {
+        darkLayers.forEach((layer) => {
+          if (map.hasLayer(layer)) map.removeLayer(layer);
+        });
+        satelliteLayers.forEach((layer) => {
+          if (!map.hasLayer(layer)) layer.addTo(map);
+        });
+      }
+      setMapTheme(nextTheme);
+    };
+
     L.control.zoom({ position: "bottomright" }).addTo(map);
     L.control.scale({ position: "bottomleft", metric: true, imperial: true }).addTo(map);
 
@@ -65,6 +103,7 @@ export default function MapView() {
         { padding: [36, 36], animate: false },
       );
     };
+    fitRef.current = fit;
 
     const paint = () => {
       const size = map.getSize();
@@ -118,9 +157,76 @@ export default function MapView() {
       for (const item of scene) {
         if (item.lat == null || item.lon == null) continue;
         const pt = map.latLngToContainerPoint([item.lat, item.lon]);
-        if (pt.x < -20 || pt.y < -20 || pt.x > size.x + 20 || pt.y > size.y + 20) continue;
+        if (pt.x < -40 || pt.y < -40 || pt.x > size.x + 40 || pt.y > size.y + 40) continue;
         const selected = item.aircraft.icao24 === state.selectedId;
         const fill = colorFor(item, alerted.has(item.aircraft.icao24));
+
+        // Tactical 60-second velocity vector leader line
+        if (!item.aircraft.onGround && item.speed != null && item.speed > 5 && item.track != null) {
+          const distM = item.speed * 60;
+          const proj = project(item.lat, item.lon, item.track, distM);
+          const projPt = map.latLngToContainerPoint([proj.lat, proj.lon]);
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.strokeStyle = selected ? "rgba(94,234,212,0.85)" : "rgba(215,228,241,0.22)";
+          ctx.lineWidth = selected ? 1.5 : 0.8;
+          ctx.moveTo(pt.x, pt.y);
+          ctx.lineTo(projPt.x, projPt.y);
+          ctx.stroke();
+
+          if (selected) {
+            // 30s midpoint tick
+            const midProj = project(item.lat, item.lon, item.track, distM * 0.5);
+            const midPt = map.latLngToContainerPoint([midProj.lat, midProj.lon]);
+            ctx.beginPath();
+            ctx.arc(midPt.x, midPt.y, 2, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(94,234,212,0.9)";
+            ctx.fill();
+
+            // 60s arrowhead tick
+            ctx.beginPath();
+            ctx.arc(projPt.x, projPt.y, 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(94,234,212,0.9)";
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+
+        // Tactical range rings & reticle around selected aircraft
+        if (selected) {
+          ctx.save();
+          for (const [nm, distM] of [[5, 9260], [10, 18520]] as const) {
+            const edge = project(item.lat, item.lon, 90, distM);
+            const edgePt = map.latLngToContainerPoint([edge.lat, edge.lon]);
+            const radius = Math.abs(edgePt.x - pt.x);
+            if (radius > 10 && radius < 2500) {
+              ctx.beginPath();
+              ctx.setLineDash([3, 4]);
+              ctx.strokeStyle = "rgba(94,234,212,0.35)";
+              ctx.lineWidth = 1;
+              ctx.arc(pt.x, pt.y, radius, 0, Math.PI * 2);
+              ctx.stroke();
+              ctx.setLineDash([]);
+              ctx.fillStyle = "rgba(94,234,212,0.7)";
+              ctx.font = `500 10px ${font}`;
+              ctx.fillText(`${nm} NM`, pt.x + radius + 4, pt.y + 3);
+            }
+          }
+
+          // Target reticle corner brackets
+          const b = 15;
+          ctx.strokeStyle = "rgba(240,180,41,0.9)";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(pt.x - b, pt.y - b + 5); ctx.lineTo(pt.x - b, pt.y - b); ctx.lineTo(pt.x - b + 5, pt.y - b);
+          ctx.moveTo(pt.x + b - 5, pt.y - b); ctx.lineTo(pt.x + b, pt.y - b); ctx.lineTo(pt.x + b, pt.y - b + 5);
+          ctx.moveTo(pt.x - b, pt.y + b - 5); ctx.lineTo(pt.x - b, pt.y + b); ctx.lineTo(pt.x - b + 5, pt.y + b);
+          ctx.moveTo(pt.x + b - 5, pt.y + b); ctx.lineTo(pt.x + b, pt.y + b); ctx.lineTo(pt.x + b, pt.y + b - 5);
+          ctx.stroke();
+          ctx.restore();
+        }
+
         if (item.status === "coasting" || item.status === "stale" || item.frozen) {
           ctx.beginPath();
           ctx.setLineDash([2, 3]);
@@ -255,6 +361,30 @@ export default function MapView() {
   return (
     <div className="relative h-full min-h-[320px]">
       <div ref={host} className="absolute inset-0" />
+      <div className="absolute left-3 top-3 z-[400] flex items-center gap-1 rounded border border-line bg-ink/80 p-1 backdrop-blur-md">
+        <button
+          type="button"
+          onClick={() => switchThemeRef.current?.("dark")}
+          className={`rounded px-2 py-0.5 font-mono text-[11px] cursor-pointer ${mapTheme === "dark" ? "bg-panel-2 text-cyan font-semibold border border-cyan/40" : "text-muted hover:text-paper"}`}
+        >
+          Radar Dark
+        </button>
+        <button
+          type="button"
+          onClick={() => switchThemeRef.current?.("satellite")}
+          className={`rounded px-2 py-0.5 font-mono text-[11px] cursor-pointer ${mapTheme === "satellite" ? "bg-panel-2 text-cyan font-semibold border border-cyan/40" : "text-muted hover:text-paper"}`}
+        >
+          Satellite
+        </button>
+        <button
+          type="button"
+          onClick={() => fitRef.current?.()}
+          title="Fit view to region"
+          className="rounded border border-line px-2 py-0.5 font-mono text-[11px] text-muted hover:border-amber hover:text-amber cursor-pointer"
+        >
+          Fit Sector
+        </button>
+      </div>
       <p ref={coord} className="pointer-events-none absolute right-3 top-3 z-[400] rounded bg-ink/80 px-2 py-1 font-mono text-[11px] text-paper" />
       <p ref={hint} hidden className="absolute left-1/2 top-3 z-[400] -translate-x-1/2 rounded border border-cyan/50 bg-ink/90 px-3 py-1.5 text-[12px] text-cyan">
         Drag a rectangle to monitor that region.

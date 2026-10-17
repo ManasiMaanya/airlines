@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { isAudioEnabled, setAudioEnabled } from "@/lib/audio";
 import { budgetMinutes, formatAge } from "@/lib/format";
 import { requestImmediatePoll } from "@/lib/poller";
 import { buildScene, visualStatus } from "@/lib/scene";
@@ -55,7 +57,9 @@ export function StatusBar() {
 
   const age = feed.fetchedAt != null ? formatAge(now - feed.fetchedAt) : "—";
   const minutes = budgetMinutes(feed.creditsRemaining, feed.creditCost, refreshMs);
+  const [soundOn, setSoundOn] = useState(isAudioEnabled());
   const alertCount = Object.keys(activeAlerts).length;
+  const zuluTime = new Date(now).toISOString().slice(11, 19) + "Z";
 
   return (
     <header className="flex flex-wrap items-center gap-3 border-b border-line bg-panel px-4 py-2.5">
@@ -91,14 +95,32 @@ export function StatusBar() {
         {minutes != null ? ` · ~${minutes} min` : ""}
       </p>
 
+      <div className="flex items-center gap-1.5 rounded border border-line bg-ink/60 px-2.5 py-1 font-mono text-[11px] text-paper">
+        <span className="h-1.5 w-1.5 rounded-full bg-cyan animate-pulse" />
+        <span>{zuluTime}</span>
+      </div>
+
       <div className="flex overflow-hidden rounded border border-line text-[11px]">
-        <button type="button" className={`px-2 py-1 ${units === "aviation" ? "bg-panel-2 text-amber" : "text-muted"}`} onClick={() => setUnits("aviation")}>
+        <button type="button" className={`px-2 py-1 cursor-pointer ${units === "aviation" ? "bg-panel-2 text-amber font-semibold" : "text-muted"}`} onClick={() => setUnits("aviation")}>
           ft / kt
         </button>
-        <button type="button" className={`px-2 py-1 ${units === "si" ? "bg-panel-2 text-amber" : "text-muted"}`} onClick={() => setUnits("si")}>
+        <button type="button" className={`px-2 py-1 cursor-pointer ${units === "si" ? "bg-panel-2 text-amber font-semibold" : "text-muted"}`} onClick={() => setUnits("si")}>
           m / m/s
         </button>
       </div>
+
+      <button
+        type="button"
+        onClick={() => {
+          const next = !soundOn;
+          setSoundOn(next);
+          setAudioEnabled(next);
+        }}
+        title={soundOn ? "Mute audio alerts" : "Enable audio alerts"}
+        className={`rounded border px-2 py-1 text-[11px] cursor-pointer ${soundOn ? "border-cyan/40 bg-cyan/10 text-cyan hover:border-cyan" : "border-line text-muted hover:border-muted"}`}
+      >
+        {soundOn ? "🔊 Audio" : "🔇 Muted"}
+      </button>
 
       <button
         type="button"

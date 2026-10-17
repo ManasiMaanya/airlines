@@ -104,14 +104,21 @@ export function TrafficColumn() {
                   key={id}
                   type="button"
                   onClick={() => select(id)}
-                  className={`absolute right-0 left-0 flex items-center gap-3 border-b border-line/70 px-3 text-left ${active ? "bg-amber/10" : "hover:bg-panel-2"}`}
+                  className={`absolute right-0 left-0 flex items-center gap-3 border-b border-line/70 px-3 text-left cursor-pointer transition-colors ${active ? "bg-amber/10 border-l-2 border-l-amber" : "hover:bg-panel-2"}`}
                   style={{ top: index * ROW, height: ROW }}
                 >
                   <span className={`h-2 w-2 shrink-0 rounded-full ${dotClass(item, alerted.has(id))}`} />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-2">
                       <span className="truncate font-medium">{callsignOrIcao(item.aircraft.callsign, id)}</span>
-                      <span className="font-mono text-[12px] text-paper">{formatAlt(item.aircraft.baroAltitude, units, item.aircraft.onGround)}</span>
+                      <span className="font-mono text-[12px] text-paper flex items-center gap-1">
+                        {formatAlt(item.aircraft.baroAltitude, units, item.aircraft.onGround)}
+                        {!item.aircraft.onGround && item.aircraft.verticalRate != null && Math.abs(item.aircraft.verticalRate) > 0.8 && (
+                          <span className={`text-[10px] ${item.aircraft.verticalRate > 0 ? "text-cyan" : "text-amber"}`}>
+                            {item.aircraft.verticalRate > 0 ? "▲" : "▼"}
+                          </span>
+                        )}
+                      </span>
                     </span>
                     <span className="mt-0.5 flex justify-between font-mono text-[11px] text-muted">
                       <span className="truncate">{item.aircraft.originCountry}</span>
@@ -176,13 +183,27 @@ function Detail({
             {plane.icao24.toUpperCase()} · {plane.originCountry}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setFollow(!follow)}
-          className={`rounded border px-2 py-1 text-[11px] ${follow ? "border-amber text-amber" : "border-line text-muted"}`}
-        >
-          {follow ? "Following" : "Follow"}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof navigator !== "undefined" && navigator.clipboard) {
+                void navigator.clipboard.writeText(plane.icao24);
+              }
+            }}
+            title="Copy ICAO24 hex identifier"
+            className="rounded border border-line px-2 py-1 text-[11px] text-muted hover:border-paper hover:text-paper cursor-pointer"
+          >
+            Copy Hex
+          </button>
+          <button
+            type="button"
+            onClick={() => setFollow(!follow)}
+            className={`rounded border px-2 py-1 text-[11px] cursor-pointer ${follow ? "border-amber text-amber font-semibold" : "border-line text-muted"}`}
+          >
+            {follow ? "Following" : "Follow"}
+          </button>
+        </div>
       </div>
       <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-[12px]">
         <Fact label="Status" value={statusCopy(item, replay)} />
@@ -196,6 +217,30 @@ function Detail({
         <Fact label="Last report" value={reportedAge == null ? "—" : formatAge(reportedAge)} />
         <Fact label="Last contact" value={plane.lastContact == null ? "—" : formatAge(now - plane.lastContact * 1000)} />
       </dl>
+      {!plane.onGround && (
+        <div className="mt-3 rounded border border-line/60 bg-ink/70 p-2.5">
+          <div className="flex items-center justify-between font-mono text-[10px] text-muted">
+            <span>ALTITUDE TAPE</span>
+            <span className="text-paper">{level ?? `${Math.round(plane.baroAltitude ?? 0)}m`}</span>
+          </div>
+          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-panel-2">
+            <div
+              className="h-full bg-gradient-to-r from-cyan to-amber transition-all duration-300"
+              style={{ width: `${Math.min(100, Math.max(5, ((plane.baroAltitude ?? 0) / 13000) * 100))}%` }}
+            />
+          </div>
+          <div className="mt-2 flex items-center justify-between font-mono text-[10px] text-muted">
+            <span>SPEED TAPE</span>
+            <span className="text-paper">{formatSpeed(item.speed, units)}</span>
+          </div>
+          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-panel-2">
+            <div
+              className="h-full bg-gradient-to-r from-emerald-400 to-cyan transition-all duration-300"
+              style={{ width: `${Math.min(100, Math.max(5, ((item.speed ?? 0) / 300) * 100))}%` }}
+            />
+          </div>
+        </div>
+      )}
       <p className="mt-3 font-mono text-[11px] leading-relaxed text-paper">
         {plane.latitude != null && plane.longitude != null ? `Reported ${formatCoord(plane.latitude, plane.longitude)}` : "No position in the latest report."}
         {plane.positionHeld ? " Coordinates held from the previous fix." : ""}

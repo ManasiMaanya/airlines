@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
+import { playEmergencyChime } from "@/lib/audio";
 import { startPolling, stopPolling } from "@/lib/poller";
 import { useAirspace } from "@/store/airspace";
 import { Controls } from "./Controls";
@@ -23,6 +24,12 @@ export function Dashboard() {
   const select = useAirspace((state) => state.select);
   const activeAlerts = useAirspace((state) => state.activeAlerts);
   const emergencyAlerts = Object.values(activeAlerts).filter((a) => a.ruleId === "emergency-squawk");
+
+  useEffect(() => {
+    if (emergencyAlerts.length > 0) {
+      playEmergencyChime();
+    }
+  }, [emergencyAlerts.length]);
 
   useEffect(() => {
     let cancel = false;
