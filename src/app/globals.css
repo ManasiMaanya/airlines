@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #071018;
+  --color-panel: #0c1722;
+  --color-panel-2: #132536;
+  --color-line: #2a4158;
+  --color-text: #e7eef6;
+  --color-muted: #8ea6bb;
+  --color-amber: #f0b429;
+  --color-cyan: #5eead4;
+  --color-rose: #ff6b81;
+  --color-paper: #d7e4f1;
+}
+
+@theme inline {
+  --font-sans: var(--font-barlow), "Segoe UI", sans-serif;
+  --font-mono: var(--font-plex), ui-monospace, monospace;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--color-ink);
+  color: var(--color-text);
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-amber);
+  outline-offset: 2px;
+}
+
+.leaflet-container {
+  background: #071018;
+  font: inherit;
+}
+
+.leaflet-control-zoom a,
+.leaflet-bar a {
+  background: #0c1722;
+  color: #e7eef6;
+  border-bottom-color: #2a4158;
+}
+
+.leaflet-control-zoom a:hover,
+.leaflet-bar a:hover {
+  background: #132536;
+  color: #f0b429;
+}
+
+.leaflet-bar {
+  border: 1px solid #2a4158 !important;
+  box-shadow: none;
+}
+
+.leaflet-control-attribution {
+  background: rgba(7, 16, 24, 0.82) !important;
+  color: #8ea6bb !important;
+}
+
+.leaflet-control-attribution a {
+  color: #d7e4f1 !important;
+}
+
+.leaflet-control-scale-line {
+  background: rgba(7, 16, 24, 0.75);
+  border-color: #8ea6bb;
+  color: #d7e4f1;
+  border-width: 1px 1px 2px;
+}
+
+.aircraft-layer {
+  pointer-events: none;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a4158;
+  border-radius: 99px;
+}
