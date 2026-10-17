@@ -21,6 +21,8 @@ export function Dashboard() {
   const [tab, setTab] = useState<Tab>("map");
   const feed = useAirspace((state) => state.feed);
   const select = useAirspace((state) => state.select);
+  const activeAlerts = useAirspace((state) => state.activeAlerts);
+  const emergencyAlerts = Object.values(activeAlerts).filter((a) => a.ruleId === "emergency-squawk");
 
   useEffect(() => {
     let cancel = false;
@@ -86,6 +88,30 @@ export function Dashboard() {
           <Controls />
         </div>
         <main className={`${tab === "map" ? "flex" : "hidden"} relative min-h-0 min-w-0 flex-1 flex-col lg:flex`}>
+          {emergencyAlerts.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rose/50 bg-rose/20 px-4 py-2 text-[12px] font-mono text-rose">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-rose" />
+                </span>
+                <span className="font-semibold uppercase tracking-wider">Squawk Alert:</span>
+                <span>
+                  {emergencyAlerts.map((a) => `${a.callsign ?? a.icao24.toUpperCase()} (${a.detail})`).join(", ")}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  select(emergencyAlerts[0].icao24);
+                  useAirspace.getState().setFollow(true);
+                }}
+                className="rounded border border-rose/60 bg-rose/30 px-2.5 py-0.5 text-[11px] font-semibold text-text hover:bg-rose/50 cursor-pointer"
+              >
+                Focus Track
+              </button>
+            </div>
+          )}
           {feed.message && (
             <div className="border-b border-amber/40 bg-amber/10 px-4 py-2 text-[12px] leading-relaxed text-amber">{feed.message}</div>
           )}

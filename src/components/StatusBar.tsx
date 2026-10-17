@@ -1,6 +1,7 @@
 "use client";
 
 import { budgetMinutes, formatAge } from "@/lib/format";
+import { requestImmediatePoll } from "@/lib/poller";
 import { buildScene, visualStatus } from "@/lib/scene";
 import { useAirspace } from "@/store/airspace";
 import { useNow } from "./useNow";
@@ -101,8 +102,18 @@ export function StatusBar() {
 
       <button
         type="button"
+        disabled={offline || feed.loading}
+        onClick={() => requestImmediatePoll()}
+        title="Request an immediate refresh from OpenSky"
+        className="rounded border border-line px-2.5 py-1 text-[11px] text-muted hover:border-amber hover:text-amber disabled:opacity-50 cursor-pointer"
+      >
+        {feed.loading ? "Syncing…" : "Sync now"}
+      </button>
+
+      <button
+        type="button"
         onClick={() => setOffline(!offline)}
-        className={`rounded border px-2.5 py-1 text-[11px] ${offline ? "border-amber text-amber" : "border-line text-muted"}`}
+        className={`rounded border px-2.5 py-1 text-[11px] cursor-pointer ${offline ? "border-amber text-amber" : "border-line text-muted"}`}
       >
         {offline ? "Resume live" : "Go offline"}
       </button>

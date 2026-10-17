@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { evaluateAlerts, DEFAULT_RULES } from "./alerts";
-import { bboxArea, creditsForArea, project, validBBox } from "./geo";
+import { bboxArea, creditsForArea, haversine, lerpAngle, overlapRatio, project, validBBox } from "./geo";
 import { parseState } from "./parse";
 import { predict } from "./predict";
+import { buildScene, visualStatus } from "./scene";
 import { mergeTracks } from "./track";
-import type { Aircraft, Report } from "./types";
+import type { Aircraft, AlertRule, Filters, Report, Snapshot } from "./types";
 
 function report(overrides: Partial<Report> = {}): Report {
   return {
@@ -165,4 +166,113 @@ describe("alerts", () => {
     assert.equal(second.events.length, 0);
     assert.equal(Object.keys(second.active).length, 1);
   });
+
+  it("evaluates custom altitude and speed rules", () => {
+    const highAndFast = tracked({
+      icao24: "jet001",
+      callsign: "JET1",
+      baroAltitude: 12000,
+      velocity: 280,
+      onGround: false,
+    });
+    const customRules: AlertRule[] = [
+      {
+        id: "high-alt",
+        name: "Above 10000m",
+        enabled: true,
+        kind: "altitude_above",
+        meters: 10000,
+        metersPerSec: null,
+        box: null,
+        locked: false,
+      },
+      {
+        id: "high-speed",
+        name: "Fast speed",
+        enabled: true,
+        kind: "speed_above",
+        meters: null,
+        metersPerSec: 250,
+        box: null,
+        locked: false,
+      },
+    ];
+    const { active, events } = evaluateAlerts([highAndFast], customRules, {}, 10_000);
+    assert.equal(events.length, 2);
+    assert.ok(active["high-alt:jet001"]);
+    assert.ok(active["high-speed:jet001"]);
+  });
 });
+
+describe("geo helpers", () => {
+  it("calculates accurate haversine distances", () => {
+    // London (51.5, -0.1) to Paris (48.85, 2.35) is roughly 340 km
+    const dist = haversine(51.5, -0.1, 48.85, 2.35);
+    assert.ok(dist > 330_000 && dist < 350_000);
+  });
+
+  it("interpolates angles across the 360-degree boundary", () => {
+    // Interpolating halfway between 350 and 10 should yield 0 (or 360)
+    const mid = lerpAngle(350, 10, 0.5);
+    assert.ok(Math.abs(mid) < 1e-4 || Math.abs(mid - 360) < 1e-4);
+  });
+
+  it("calculates bounding box overlap correctly", () => {
+    const a = { lamin: 50, lomin: 0, lamax: 52, lomax: 2 };
+    const b = { lamin: 51, lomin: 1, lamax: 53, lomax: 3 };
+    const ratio = overlapRatio(a, b);
+    // Intersection is [51, 52] x [1, 2] = 1 sq deg. Area of a is 4 sq deg -> ratio 0.25
+    assert.ok(Math.abs(ratio - 0.25) < 0.01);
+  });
+});
+
+describe("scene filtering and replay", () => {
+  const defaultFilters: Filters = {
+    query: "",
+    phase: "all",
+    minAlt: null,
+    maxAlt: null,
+    minSpeed: null,
+    country: "all",
+    emergenciesOnly: false,
+    includeDeparted: false,
+  };
+
+  it("filters aircraft by flight phase and emergency squawk", () => {
+    const airborne = tracked({ icao24: "air001", onGround: false, squawk: "1200" });
+    const ground = tracked({ icao24: "gnd001", onGround: true, squawk: "7700" });
+    const aircraftMap = { air001: airborne, gnd001: ground };
+
+    const onlyAirborne = buildScene(aircraftMap, [], { on: false, playing: false, index: 0, speed: 1 }, { ...defaultFilters, phase: "airborne" }, null, 1_000);
+    assert.equal(onlyAirborne.length, 1);
+    assert.equal(onlyAirborne[0].aircraft.icao24, "air001");
+
+    const onlyEmergency = buildScene(aircraftMap, [], { on: false, playing: false, index: 0, speed: 1 }, { ...defaultFilters, emergenciesOnly: true }, null, 1_000);
+    assert.equal(onlyEmergency.length, 1);
+    assert.equal(onlyEmergency[0].aircraft.icao24, "gnd001");
+  });
+
+  it("interpolates aircraft positions in replay mode between snapshots", () => {
+    const snap1: Snapshot = {
+      t: 10_000,
+      upstreamTime: 10,
+      reports: [report({ icao24: "rep001", latitude: 51.0, longitude: 0.0, baroAltitude: 1000 })],
+    };
+    const snap2: Snapshot = {
+      t: 20_000,
+      upstreamTime: 20,
+      reports: [report({ icao24: "rep001", latitude: 52.0, longitude: 1.0, baroAltitude: 2000 })],
+    };
+
+    const scene = buildScene({}, [snap1, snap2], { on: true, playing: false, index: 0.5, speed: 1 }, defaultFilters, null, 15_000);
+    assert.equal(scene.length, 1);
+    assert.equal(scene[0].aircraft.icao24, "rep001");
+    // Halfway between 51 and 52 -> 51.5
+    assert.ok(Math.abs((scene[0].lat ?? 0) - 51.5) < 0.01);
+    // Halfway between 0 and 1 -> 0.5
+    assert.ok(Math.abs((scene[0].lon ?? 0) - 0.5) < 0.01);
+    // Halfway between 1000 and 2000 -> 1500
+    assert.ok(Math.abs((scene[0].alt ?? 0) - 1500) < 1);
+  });
+});
+

@@ -41,6 +41,16 @@ export function Controls() {
   const credits = creditsForArea(area);
   const minutes = budgetMinutes(feed.creditsRemaining, credits, refreshMs);
 
+  const hasActiveFilters =
+    Boolean(filters.query) ||
+    filters.phase !== "all" ||
+    filters.country !== "all" ||
+    filters.minAlt != null ||
+    filters.maxAlt != null ||
+    filters.minSpeed != null ||
+    filters.emergenciesOnly ||
+    filters.includeDeparted;
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto bg-panel p-4">
       <section>
@@ -90,7 +100,29 @@ export function Controls() {
       </section>
 
       <section>
-        <h2 className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">Filters</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">Filters</h2>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={() =>
+                setFilters({
+                  query: "",
+                  phase: "all",
+                  country: "all",
+                  minAlt: null,
+                  maxAlt: null,
+                  minSpeed: null,
+                  emergenciesOnly: false,
+                  includeDeparted: false,
+                })
+              }
+              className="font-mono text-[10px] text-amber hover:underline cursor-pointer"
+            >
+              Reset all
+            </button>
+          )}
+        </div>
         <label className="mt-2 block text-[12px] text-muted">
           Callsign, ICAO, squawk, country
           <input
